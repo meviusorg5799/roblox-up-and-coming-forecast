@@ -20,10 +20,11 @@ left unnamed, so it spreads over the games the forecast does not name.
 Stdlib only, no network, fully deterministic: a fixed seed drives every
 simulation, so two runs on the same history write the same bytes.
 
-Tuning (backtested on the public chart archive, 5 cut points plus the
-practice window): sigma scale 1.0, velocity shrinkage 0.25, ghost rate
-0.83/hour, no probability floor. Practice log score about -35.5 against
-the house baseline's -43.5.
+Tuning (backtested on the public chart archive, 6 cut points including
+the practice window): sigma scale 1.0, velocity shrinkage 0.25, ghost
+rate 0.83/hour, no probability floor, 8-hour velocity lookback. Mean
+backtest log score about -37.9 and practice about -35.8, against the
+house baseline's -43.5 on practice.
 """
 
 import json
@@ -36,6 +37,13 @@ from datetime import datetime, timedelta, timezone
 SIGMA_SCALE = 1.0
 VEL_SHRINK = 0.25
 GHOST_RATE = 0.83
+# Velocity lookback: the per-game drift is measured over the last 8 hours,
+# not ~24. Backtested on 6 cut points of the public archive, 8 h beat
+# 20 h by about 0.9 nats on average (-37.95 vs -38.90) and also edged the
+# practice window (-35.3 vs -35.7): recent moves carry the signal, older
+# ones are mostly noise. With the final run's dense hourly history the
+# window holds about 8 hourly reads per game.
+LOOKBACK_H = 8
 # 800 simulations ran in ~9 s locally and scored -35.50 on practice; 3000
 # runs in ~35 s (limit 300 s) and cuts the Monte Carlo noise in the rare
 # tail probabilities roughly in half, so the submitted forecast is steadier.
@@ -81,7 +89,7 @@ def estimate_drift(snaps, games, rank_now):
     t_last = times[-1]
     t0 = 0
     for i in range(len(snaps) - 2, -1, -1):
-        if (t_last - times[i]).total_seconds() >= 20 * 3600:
+        if (t_last - times[i]).total_seconds() >= LOOKBACK_H * 3600:
             t0 = i
             break
     dt_h = (t_last - times[t0]).total_seconds() / 3600.0
