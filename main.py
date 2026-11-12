@@ -12,7 +12,7 @@ grows with the square root of its rank (top games are sticky, lower games
 churn). New games ("ghosts") join the chart at about 0.83 an hour, entering
 near the bottom with a young game's climbing drift, and games that fall
 past rank 100 leave. Games older than 28 days leave too when the history
-carries their creation date. 800 seeded simulations run 72 hours; the
+carries their creation date. 3000 seeded simulations run 72 hours; the
 forecast for each place is the share of simulated hours each game spent
 there, averaged over the window. The share of hours a ghost held a place is
 left unnamed, so it spreads over the games the forecast does not name.
@@ -22,7 +22,7 @@ simulation, so two runs on the same history write the same bytes.
 
 Tuning (backtested on the public chart archive, 5 cut points plus the
 practice window): sigma scale 1.0, velocity shrinkage 0.25, ghost rate
-0.83/hour, no probability floor. Practice log score about -35.2 against
+0.83/hour, no probability floor. Practice log score about -35.5 against
 the house baseline's -43.5.
 """
 
@@ -126,6 +126,20 @@ def birth_rank(rng):
     return rng.uniform(25, 60)
 
 
+def poisson_count(rng, lam):
+    """Poisson(lam) by Knuth's method (lam < 30 here, so it is cheap).
+    Births cluster: about 16% of hours see two new games, which the
+    one-or-none coin flip below used to forbid."""
+    limit = math.exp(-lam)
+    k = 0
+    p = 1.0
+    while True:
+        p *= rng.random()
+        if p <= limit:
+            return k
+        k += 1
+
+
 def simulate(snaps, task, n_sims=N_SIMS):
     times = [parse_time(s["at"]) for s in snaps]
     t_last = times[-1]
@@ -157,8 +171,8 @@ def simulate(snaps, task, n_sims=N_SIMS):
         gid = 0
         for step in range(1, n_steps + 1):
             step_time = t_last + timedelta(hours=step)
-            # New games join the chart.
-            if rng.random() < GHOST_RATE:
+            # New games join the chart: a Poisson count each hour.
+            for _ in range(poisson_count(rng, GHOST_RATE)):
                 gid += 1
                 ghosts[gid] = [birth_rank(rng), rng.gauss(-0.45, 0.9)]
             # Every game moves: drift plus rank-scaled noise.
